@@ -1,87 +1,68 @@
 #!/bin/bash
-export LANG=en_US.UTF-8
-export nix=${nix:-''}
-panel_dir=~/3xpanel
-panel_port=6689
 
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-echo "部署环境：${nix:+容器NIX-}3x UI面板 非root免安装版"
-echo "当前时间：$(date)"
-echo "安装路径：$panel_dir"
-echo "运行端口：$panel_port"
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+# 设置颜色
+green='\033[0;32m'
+plain='\033[0m'
 
-# 创建目录
-mkdir -p "$panel_dir"
-cd "$panel_dir" || exit
+# 设置安装路径和端口
+INSTALL_DIR="$HOME/3xpanel"
+PORT=6689
 
-# 检查是否已存在可执行文件
-if [[ -f "$panel_dir/3x-ui" ]]; then
-  echo "3x-ui 已安装，直接启动..."
-else
-  echo "下载最新 3x-ui release..."
+echo -e "${green}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${plain}"
+echo -e "${green}部署环境：容器NIX-3x UI面板 非root免安装版${plain}"
+echo -e "${green}当前时间：$(date -u)${plain}"
+echo -e "${green}安装路径：${INSTALL_DIR}${plain}"
+echo -e "${green}运行端口：${PORT}${plain}"
+echo -e "${green}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${plain}"
 
-  arch=$(uname -m)
-  if [[ "$arch" == "x86_64" ]]; then
-    arch="amd64"
-  elif [[ "$arch" == "aarch64" ]]; then
-    arch="arm64"
-  else
-    echo "❌ 不支持的架构: $arch"
-    exit 1
-  fi
+# 创建安装目录
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR" || exit
 
-  version=$(curl -s https://api.github.com/repos/MHSanaei/3x-ui/releases/latest | grep tag_name | cut -d '"' -f4)
-  download_url="https://github.com/MHSanaei/3x-ui/releases/download/$version/3x-ui-linux-$arch.tar.gz"
+# 检测系统架构
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64) ARCH="amd64" ;;
+  aarch64) ARCH="arm64" ;;
+  *) echo -e "${red}不支持的架构: $ARCH${plain}"; exit 1 ;;
+esac
 
-  echo "👉 正在下载：$download_url"
-  wget -O 3x-ui-linux.tar.gz "$download_url"
+# 设置3x-ui版本
+VERSION="v2.5.8"
 
-  # 检查下载是否成功
-  if [[ $? -ne 0 || ! -s 3x-ui-linux.tar.gz ]]; then
-    echo "❌ 下载失败或文件为空，请检查网络或稍后再试"
-    exit 1
-  fi
+# 下载3x-ui
+echo -e "${green}下载最新 3x-ui release...${plain}"
+DOWNLOAD_URL="https://github.com/MHSanaei/3x-ui/releases/download/${VERSION}/3x-ui-linux-${ARCH}.tar.gz"
+echo -e "👉 正在下载：$DOWNLOAD_URL"
 
-  # 解压
-  tar -xzf 3x-ui-linux.tar.gz
-  if [[ $? -ne 0 ]]; then
-    echo "❌ 解压失败，压缩包可能已损坏"
-    rm -f 3x-ui-linux.tar.gz
-    exit 1
-  fi
-
-  chmod +x 3x-ui
-  rm -f 3x-ui-linux.tar.gz
-  echo "✅ 下载并解压完成：3x-ui $version ($arch)"
+wget -O 3x-ui.tar.gz "$DOWNLOAD_URL"
+if [ $? -ne 0 ]; then
+  echo -e "${red}❌ 下载失败，请检查网络或稍后再试${plain}"
+  exit 1
 fi
+
+# 解压文件
+tar -xzf 3x-ui.tar.gz
+chmod +x 3x-ui
 
 # 初始化数据库
-if [[ ! -f "$panel_dir/db.sqlite" ]]; then
-  echo "初始化 3x-ui 数据库..."
-  ./3x-ui migrate
-  ./3x-ui users add --username admin --password admin123 --email admin@local
-  echo "默认账户：admin / admin123"
+./3x-ui setting -username admin -password admin123
+./3x-ui setting -port $PORT
+
+# 添加自启动到 .bashrc
+if ! grep -q "$INSTALL_DIR/3x-ui" "$HOME/.bashrc"; then
+  echo -e "\n# 启动3x-ui面板" >> "$HOME/.bashrc"
+  echo "$INSTALL_DIR/3x-ui" >> "$HOME/.bashrc"
 fi
 
-# 写入 .bashrc 自动启动
-if [[ "$HOSTNAME" == *firebase* || "$HOSTNAME" == *idx* || -n "$nix" ]]; then
-  [ -f ~/.bashrc ] || touch ~/.bashrc
-  sed -i '/3xpanel\/3x-ui/d' ~/.bashrc
-  echo "nohup ~/3xpanel/3x-ui run --port $panel_port > /dev/null 2>&1 &" >> ~/.bashrc
-  source ~/.bashrc
-  echo "✅ 已设置 .bashrc 自启"
-fi
+# 启动3x-ui
+echo -e "${green}正在启动 3x-ui 面板...${plain}"
+nohup ./3x-ui > /dev/null 2>&1 &
 
-# 启动服务
-echo "启动 3x-ui 面板..."
-nohup "$panel_dir/3x-ui" run --port "$panel_port" > /dev/null 2>&1 &
-
-echo
-echo "✅ 安装完成！请使用以下信息登录面板："
-echo "-------------------------------------------------"
-echo "地址： http://<你的Firebase公网地址>:$panel_port"
-echo "账户： admin"
-echo "密码： admin123"
-echo "（首次登录后请及时修改密码）"
-echo "-------------------------------------------------"
+echo -e "${green}✅ 安装完成！请使用以下信息登录面板：${plain}"
+echo -e "-------------------------------------------------"
+echo -e "地址： http://<你的服务器IP>:${PORT}"
+echo -e "账户： admin"
+echo -e "密码： admin123"
+echo -e "（首次登录后请及时修改密码）"
+echo -e "-------------------------------------------------"
