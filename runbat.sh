@@ -2,61 +2,41 @@
 export LANG=en_US.UTF-8
 export nix=${nix:-''}
 [ -z "$nix" ] && sys='主流VPS-' || sys='容器NIX-'
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-echo " 宝塔面板一键安装 + 自启动脚本"
-echo " 当前模式：${sys}"
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "部署环境：${sys}3x UI面板 自动启动脚本"
+echo "当前时间：$(date)"
+echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
-# 判断是否已安装宝塔
-bt_installed() {
-    command -v bt >/dev/null 2>&1 && [ -d "/www/server/panel" ]
-}
+# 设置默认路径
+mkdir -p ~/3xpanel
+panel_dir=~/3xpanel
 
-# VPS模式下的开机自启：使用 @reboot crontab
-enable_autostart_vps() {
-    crontab -l > /tmp/crontab.bt || true
-    sed -i '/bt start/d' /tmp/crontab.bt
-    echo '@reboot /etc/init.d/bt start' >> /tmp/crontab.bt
-    crontab /tmp/crontab.bt
-    rm /tmp/crontab.bt
-}
-
-# NIX（容器）模式下的开机自启：通过 bashrc
-enable_autostart_nix() {
-    [ -f ~/.bashrc ] || touch ~/.bashrc
-    sed -i '/bt start/d' ~/.bashrc
-    echo 'command -v bt >/dev/null 2>&1 && bt start' >> ~/.bashrc
-}
-
-# 宝塔安装
-install_bt() {
-    echo "开始安装宝塔面板..."
-    if [ -f /etc/redhat-release ]; then
-        yum install -y wget && yum update -y
-        curl -sSO http://download.bt.cn/install/install_6.0.sh
-        bash install_6.0.sh
-    elif grep -i -E "debian|ubuntu" /etc/issue >/dev/null 2>&1 || grep -i -E "debian|ubuntu" /etc/os-release >/dev/null 2>&1; then
-        apt update -y && apt install -y wget
-        curl -sSO http://download.bt.cn/install/install-ubuntu_6.0.sh
-        bash install-ubuntu_6.0.sh
-    else
-        echo "暂不支持的系统，请使用CentOS、Ubuntu或Debian" && exit 1
-    fi
-}
-
-# 主流程
-if bt_installed; then
-    echo "宝塔面板已安装，尝试配置自启动..."
-else
-    install_bt
+# 判断是否已经安装
+if [[ -f "$panel_dir/start.sh" ]]; then
+  echo "3x UI 面板已安装，尝试重启面板..."
+  nohup bash "$panel_dir/start.sh" > /dev/null 2>&1 &
+  exit 0
 fi
 
-if [ -z "$nix" ]; then
-    enable_autostart_vps
-    echo "VPS模式：已设置 crontab @reboot 启动宝塔"
-else
-    enable_autostart_nix
-    echo "NIX容器模式：已写入 ~/.bashrc 自动启动宝塔"
+# 下载并安装 3x UI 面板（请根据你实际使用的3x UI项目调整）
+echo "开始安装 3x UI 面板..."
+cd "$panel_dir"
+git clone https://github.com/MHSanaei/3x-ui.git . || {
+  echo "下载失败，请检查网络或更换源"
+  exit 1
+}
+chmod +x install.sh
+bash install.sh
+
+# 开机自动启动设置（适用于 Firebase Studio 容器环境）
+if [[ "$HOSTNAME" == *firebase* || "$HOSTNAME" == *idx* ]]; then
+  [ -f ~/.bashrc ] || touch ~/.bashrc
+  sed -i '/3xpanel\/start.sh/d' ~/.bashrc
+  echo 'nohup bash ~/3xpanel/start.sh > /dev/null 2>&1 &' >> ~/.bashrc
+  source ~/.bashrc
+  echo "已配置 bashrc 开机自动启动"
 fi
 
-echo "完成。你可以使用 bt 命令查看宝塔状态。"
+# 启动面板
+echo "启动 3x UI 面板..."
+nohup bash "$panel_dir/start.sh" > /dev/null 2>&1 &
